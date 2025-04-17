@@ -11,10 +11,12 @@
 
 Скрины приложения:
 
-![image](https://github.com/user-attachments/assets/ffd70ac7-aef3-42cd-a6eb-9c97df37758a)
+![Screenshot_20250417_231209_edit_549193447731800](https://github.com/user-attachments/assets/a107c681-ec34-4eec-b625-4b72e501acd8) 
 
-![image](https://github.com/user-attachments/assets/9898f559-2d93-47dc-bca0-be825976bdcd)
+![Screenshot_20250417_231222_edit_549214788145698](https://github.com/user-attachments/assets/1c024b9e-54c7-426c-b956-9a9d92b30b94)
 
-![image](https://github.com/user-attachments/assets/931c64b7-164a-49e9-b095-d9a9ae9f2b0d)
+![Screenshot_20250417_231218_edit_549201298436016](https://github.com/user-attachments/assets/00ed68bd-f3ba-4e60-a0b7-0bb93ad75e8d)
+
+
 
 APK: https://disk.yandex.ru/d/YIWGL5dnXmoa9w
