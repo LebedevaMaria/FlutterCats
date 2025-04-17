@@ -90,7 +90,7 @@ class DetailScreen extends StatelessWidget {
       body: Center(
         child: SizedBox(
           height: MediaQuery.of(context).size.height * 0.8,
-          width: MediaQuery.of(context).size.width * 0.3,
+          width: MediaQuery.of(context).size.width,
           child: Card(
             elevation: 8,
             shape: RoundedRectangleBorder(
@@ -365,7 +365,7 @@ class _ImageScreenState extends State<ImageScreen> {
     return Center(
       child: SizedBox(
         height: MediaQuery.of(context).size.height * 0.8,
-        width: MediaQuery.of(context).size.width * 0.3,
+        width: MediaQuery.of(context).size.width ,
         child: CardSwiper(
           controller: controller,
           cardsCount: cards.length,
