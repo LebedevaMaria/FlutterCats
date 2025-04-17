@@ -33,6 +33,7 @@ dependencies:
   http: ^0.13.3
   cached_network_image: ^3.3.1
   flutter_card_swiper: ^7.0.2
+  intl: ^0.18.1
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
