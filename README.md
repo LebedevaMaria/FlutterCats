@@ -16,3 +16,5 @@
 ![image](https://github.com/user-attachments/assets/9898f559-2d93-47dc-bca0-be825976bdcd)
 
 ![image](https://github.com/user-attachments/assets/931c64b7-164a-49e9-b095-d9a9ae9f2b0d)
+
+APK: https://disk.yandex.ru/d/YIWGL5dnXmoa9w
