@@ -1,16 +1,10 @@
-# cats_flutter
+# cats
 
-A new Flutter project.
-
-## Getting Started
-
-This project is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter project:
-
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Приложение представляет собой Кототиндер
+Описание приложения и реализованные фичи:
+1. На главном экране представлены карточки с котиками и названием породы
+2. При нажатии на карточку появится информация с подробным описанием породы
+3. Есть возможность поставить лайк/дизлайк котику. Либо свайпом в нужную сторону, либо нажатием на соответствующую кнопку
+4. Ведется подсчет кол-ва лайков
+5. При нажатии на кнопку рядом со счетчиком лайков, появится экран со списком всех лайкнутых котиков. Будет отображаться фотография, название породы и дата лайка. Есть возможность удаления котика из этого списка
+6. Есть возможность фильтровать котиков по породе в этом списке с помощью выпадающего списка
