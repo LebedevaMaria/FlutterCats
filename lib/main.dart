@@ -7,6 +7,69 @@ import 'package:intl/intl.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:io';
 import 'dart:async';
+import 'package:sqflite/sqflite.dart';
+import 'package:path/path.dart' as path;
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+
+void main() {
+  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+  }
+
+  runApp(MyApp());
+}
+
+class DatabaseHelper {
+  static final DatabaseHelper _instance = DatabaseHelper._internal();
+  static Database? _database;
+
+  factory DatabaseHelper() => _instance;
+
+  DatabaseHelper._internal();
+
+  Future<Database> get database async {
+    if (_database != null) return _database!;
+    _database = await _initDatabase();
+    return _database!;
+  }
+
+  Future<Database> _initDatabase() async {
+    final databasesPath = await getDatabasesPath();
+    final dbPath = path.join(databasesPath, 'cats.db');
+    return await openDatabase(dbPath, version: 1, onCreate: _onCreate);
+  }
+
+  Future<void> _onCreate(Database db, int version) async {
+    await db.execute('''
+      CREATE TABLE cats(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        imageUrl TEXT NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL,
+        date TEXT NOT NULL
+      )
+    ''');
+  }
+
+  Future<int> insertCat(Cat cat) async {
+    final db = await database;
+    final data = cat.toMap()..remove('id');
+    return await db.insert('cats', data);
+  }
+
+  Future<List<Cat>> getAllCats() async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query('cats');
+    return List.generate(maps.length, (i) => Cat.fromMap(maps[i]));
+  }
+
+  Future<int> deleteCat(int id) async {
+    final db = await database;
+    return await db.delete('cats', where: 'id = ?', whereArgs: [id]);
+  }
+}
 
 const Color primaryColor = Color(0xFF6C5CE7);
 const Color secondaryColor = Color(0xFFA8A4E6);
@@ -14,6 +77,41 @@ const Color accentColor = Color(0xFFFFD6A5);
 const Color backgroundColor = Color(0xFFF8F9FA);
 const Color textColor = Color(0xFF2D3436);
 const Color errorColor = Color(0xFFE57373);
+
+class Cat {
+  final int? id;
+  final String imageUrl;
+  final String name;
+  final String description;
+  final DateTime date;
+
+  Cat({
+    this.id,
+    required this.imageUrl,
+    required this.name,
+    required this.description,
+    required this.date,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'imageUrl': imageUrl,
+      'name': name,
+      'description': description,
+      'date': date.toIso8601String(),
+    };
+  }
+
+  factory Cat.fromMap(Map<String, dynamic> map) {
+    return Cat(
+      id: map['id'],
+      imageUrl: map['imageUrl'],
+      name: map['name'],
+      description: map['description'],
+      date: DateTime.parse(map['date']),
+    );
+  }
+}
 
 class LikeButton extends StatelessWidget {
   final VoidCallback onPressed;
@@ -145,10 +243,6 @@ class DetailScreen extends StatelessWidget {
   }
 }
 
-void main() {
-  runApp(MyApp());
-}
-
 class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -187,12 +281,15 @@ class ImageScreen extends StatefulWidget {
 class _ImageScreenState extends State<ImageScreen> {
   final CardSwiperController controller = CardSwiperController();
   List<Map<String, String>> cards = [];
-  List<Map<String, dynamic>> likedCats = [];
   int totalLikes = 0;
   bool isLoading = true;
   Exception? _lastError;
+  late StreamSubscription<ConnectivityResult> _connectivitySubscription;
+  ConnectivityResult _connectionStatus = ConnectivityResult.none;
 
   Future<void> fetchImage() async {
+    if (_connectionStatus == ConnectivityResult.none) return;
+
     setState(() {
       isLoading = true;
       _lastError = null;
@@ -248,10 +345,60 @@ class _ImageScreenState extends State<ImageScreen> {
     );
   }
 
+  Future<void> _loadTotalLikes() async {
+    final dbHelper = DatabaseHelper();
+    final cats = await dbHelper.getAllCats();
+    setState(() => totalLikes = cats.length);
+  }
+
   @override
   void initState() {
     super.initState();
+    _initConnectivity();
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen(
+      _updateConnectionStatus,
+    );
     fetchImage();
+    _loadTotalLikes();
+  }
+
+  @override
+  void dispose() {
+    _connectivitySubscription.cancel();
+    super.dispose();
+  }
+
+  Future<void> _initConnectivity() async {
+    final result = await Connectivity().checkConnectivity();
+    _updateConnectionStatus(result);
+  }
+
+  Future<void> _updateConnectionStatus(ConnectivityResult result) async {
+    if (_connectionStatus == result) return;
+
+    setState(() => _connectionStatus = result);
+    if (!mounted) return;
+
+    final message =
+        result == ConnectivityResult.none
+            ? 'Нет подключения к интернету'
+            : 'Подключение восстановлено';
+
+    final color = result == ConnectivityResult.none ? errorColor : primaryColor;
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: color,
+          duration: Duration(seconds: 3),
+        ),
+      );
+
+    if (result != ConnectivityResult.none && cards.isEmpty) {
+      fetchImage();
+    }
   }
 
   bool _onSwipe(
@@ -260,20 +407,21 @@ class _ImageScreenState extends State<ImageScreen> {
     CardSwiperDirection direction,
   ) {
     if (direction == CardSwiperDirection.right) {
-      setState(() {
-        likedCats.add({...cards[previousIndex], 'date': DateTime.now()});
-        totalLikes++;
-      });
+      final newCat = Cat(
+        imageUrl: cards[previousIndex]['imageUrl']!,
+        name: cards[previousIndex]['name']!,
+        description: cards[previousIndex]['description']!,
+        date: DateTime.now(),
+      );
+      DatabaseHelper().insertCat(newCat).then((_) => _loadTotalLikes());
     }
     fetchImage();
     return true;
   }
 
-  void removeCat(int index) {
-    setState(() {
-      likedCats.removeAt(index);
-      totalLikes = likedCats.length;
-    });
+  void removeCat(int id) async {
+    await DatabaseHelper().deleteCat(id);
+    _loadTotalLikes();
   }
 
   @override
@@ -320,11 +468,7 @@ class _ImageScreenState extends State<ImageScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder:
-                      (context) => LikedCatsScreen(
-                        getLikedCats: () => likedCats,
-                        onRemove: removeCat,
-                      ),
+                  builder: (context) => LikedCatsScreen(onRemove: removeCat),
                 ),
               );
             },
@@ -365,7 +509,7 @@ class _ImageScreenState extends State<ImageScreen> {
     return Center(
       child: SizedBox(
         height: MediaQuery.of(context).size.height * 0.8,
-        width: MediaQuery.of(context).size.width ,
+        width: MediaQuery.of(context).size.width,
         child: CardSwiper(
           controller: controller,
           cardsCount: cards.length,
@@ -482,31 +626,40 @@ class _ImageScreenState extends State<ImageScreen> {
 }
 
 class LikedCatsScreen extends StatefulWidget {
-  final List<Map<String, dynamic>> Function() getLikedCats;
   final Function(int) onRemove;
 
-  const LikedCatsScreen({required this.getLikedCats, required this.onRemove});
+  const LikedCatsScreen({required this.onRemove});
 
   @override
   _LikedCatsScreenState createState() => _LikedCatsScreenState();
 }
 
 class _LikedCatsScreenState extends State<LikedCatsScreen> {
+  List<Cat> likedCats = [];
   String? selectedBreed = 'All';
   List<String> breeds = ['All'];
 
   @override
+  void initState() {
+    super.initState();
+    _loadCats();
+  }
+
+  Future<void> _loadCats() async {
+    final dbHelper = DatabaseHelper();
+    final cats = await dbHelper.getAllCats();
+    setState(() {
+      likedCats = cats;
+      breeds = _getUniqueBreeds(cats);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final currentCats = widget.getLikedCats();
-    final newBreeds = _getUniqueBreeds(currentCats);
-    if (!listEquals(newBreeds, breeds)) {
-      breeds = newBreeds;
-    }
     final filteredCats =
         selectedBreed == 'All'
-            ? currentCats
-            : currentCats.where((cat) => cat['name'] == selectedBreed).toList();
-
+            ? likedCats
+            : likedCats.where((cat) => cat.name == selectedBreed).toList();
     return Scaffold(
       appBar: AppBar(
         title: Text('Liked Cats', style: TextStyle(color: textColor)),
@@ -535,13 +688,71 @@ class _LikedCatsScreenState extends State<LikedCatsScreen> {
           ),
         ],
       ),
-      body: _buildBody(filteredCats),
+      body: ListView.builder(
+        itemCount: filteredCats.length,
+        itemBuilder:
+            (context, index) => Dismissible(
+              key: Key(filteredCats[index].id.toString()),
+              background: Container(color: errorColor),
+              onDismissed: (direction) => _removeCat(index),
+              child: ListTile(
+                onTap:
+                    () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder:
+                            (context) => DetailScreen(
+                              imageUrl: filteredCats[index].imageUrl,
+                              description: filteredCats[index].description,
+                            ),
+                      ),
+                    ),
+                leading: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: CachedNetworkImage(
+                    imageUrl: filteredCats[index].imageUrl,
+                    width: 50,
+                    height: 50,
+                    fit: BoxFit.cover,
+                    placeholder:
+                        (context, url) => Container(
+                          color: Colors.grey[200],
+                          width: 50,
+                          height: 50,
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              color: primaryColor,
+                              strokeWidth: 2,
+                            ),
+                          ),
+                        ),
+                    errorWidget:
+                        (context, url, error) => Container(
+                          color: Colors.grey[200],
+                          width: 50,
+                          height: 50,
+                          child: Icon(Icons.error_outline, color: errorColor),
+                        ),
+                  ),
+                ),
+                title: Text(filteredCats[index].name),
+                subtitle: Text(
+                  DateFormat(
+                    'yyyy-MM-dd HH:mm',
+                  ).format(filteredCats[index].date),
+                ),
+                trailing: IconButton(
+                  icon: Icon(Icons.delete),
+                  onPressed: () => _removeCat(index),
+                ),
+              ),
+            ),
+      ),
     );
   }
 
-  List<String> _getUniqueBreeds(List<Map<String, dynamic>> cats) {
-    final breeds = cats.map((cat) => cat['name'] as String).toSet().toList();
-    breeds.sort();
+  List<String> _getUniqueBreeds(List<Cat> cats) {
+    final breeds = cats.map((cat) => cat.name).toSet().toList()..sort();
     return ['All']..addAll(breeds);
   }
 
@@ -567,7 +778,7 @@ class _LikedCatsScreenState extends State<LikedCatsScreen> {
           background: Container(color: errorColor),
           direction: DismissDirection.endToStart,
           onDismissed: (direction) {
-            _removeCat(index, cats);
+            _removeCat(index);
           },
           child: Card(
             margin: EdgeInsets.only(bottom: 15),
@@ -593,7 +804,7 @@ class _LikedCatsScreenState extends State<LikedCatsScreen> {
               ),
               trailing: IconButton(
                 icon: Icon(Icons.delete, color: errorColor),
-                onPressed: () => _removeCat(index, cats),
+                onPressed: () => _removeCat(index),
               ),
             ),
           ),
@@ -602,15 +813,21 @@ class _LikedCatsScreenState extends State<LikedCatsScreen> {
     );
   }
 
-  void _removeCat(int index, List<Map<String, dynamic>> currentList) {
-    final globalIndex = widget.getLikedCats().indexOf(currentList[index]);
-    widget.onRemove(globalIndex);
-    setState(() {});
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Cat removed', style: TextStyle(color: Colors.white)),
-        backgroundColor: primaryColor,
-      ),
-    );
+  void _removeCat(int index) async {
+    final cat = likedCats[index];
+    if (cat.id != null) {
+      await DatabaseHelper().deleteCat(cat.id!);
+      widget.onRemove(cat.id!);
+      await _loadCats();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Cat removed', style: TextStyle(color: Colors.white)),
+          backgroundColor: primaryColor,
+        ),
+      );
+    } else {
+      print('Error: Cat ID is null');
+    }
   }
 }
